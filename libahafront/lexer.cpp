@@ -170,18 +170,18 @@ namespace aha::front
                             {
                                 m_indent_pos.pop_back();
 
-if (m_indent_pos.empty())
-{
-    // no indent
+                                if (m_indent_pos.empty())
+                                {
+                                    // no indent
 
-    if (!m_str_token.empty())
-        throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
+                                    if (!m_str_token.empty())
+                                        throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
 
-    break;
-}
+                                    break;
+                                }
 
-if (m_indent_str.compare(0, m_indent_pos.back(), m_str_token) != 0)
-throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
+                                if (m_indent_str.compare(0, m_indent_pos.back(), m_str_token) != 0)
+                                throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
                             }
 
                             m_indent_str = std::move(m_str_token);
@@ -270,11 +270,11 @@ throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
                 {
                     if (m_flags.comment_line)
                     {
-                        if (m_str_token.empty() && ch == U'#')
+                        if (m_str_token == U"#")
                         {
                             m_flags.commented_out = true;
                         }
-                        else if (!m_flags.commented_out && m_str_token.size() == 1)
+                        else if (m_str_token == U"/")
                         {
                             if (ch == U'*')
                             {
@@ -572,8 +572,6 @@ throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
                                 }
                                 if (m_idx_num_postfix != -1)
                                 {
-                                    is_float = true;
-
                                     end3 = m_idx_num_postfix;
                                     beg4 = end3;
 

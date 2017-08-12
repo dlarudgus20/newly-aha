@@ -44,7 +44,6 @@ namespace aha::front
             throw std::logic_error("repl_source was already fed EOF");
 
         m_input.insert(m_input.end(), line.begin(), line.end());
-        m_input.push_back('\n');
     }
 
     void repl_source::feedEof()

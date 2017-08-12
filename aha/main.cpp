@@ -173,7 +173,7 @@ int main(int argc, char* argv[])
                 auto t = std::get<token_number>(tok.data);
                 if (!t.is_float)
                 {
-                    std::cout << "integer [radix:" << t.radix << "] { " << t.integer << " }\n";
+                    std::cout << "integer [radix:" << t.radix << "] { " << t.integer << t.postfix << " }\n";
                 }
                 else
                 {
@@ -190,6 +190,10 @@ int main(int argc, char* argv[])
         {
             auto pos = ex.getPosition();
             std::cerr << ex.getSource().getName() << ":" << pos.line << ":" << pos.col << ": " << ex.what() << std::endl;
+
+            std::string tmp;
+            getline(std::cin, tmp);
+            return -1;
         }
     }
 
