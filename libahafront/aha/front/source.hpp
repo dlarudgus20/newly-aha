@@ -100,7 +100,7 @@ namespace aha::front
     class repl_source final : public source
     {
     public:
-        explicit repl_source(std::string name = "<REPL>");
+        explicit repl_source(std::string name = "<stdin>");
         virtual ~repl_source();
 
         void feedString(std::string_view line);

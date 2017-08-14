@@ -81,14 +81,14 @@ int main(int argc, char* argv[])
     lexer ll;
     parser yy;
 
-    auto get_input = [&src] {
+    auto get_input = [&src] (bool fresh) {
         std::string str;
-        std::cout << ">> ";
+        std::cout << (fresh ? ">> " : "-- ");
 
         if (!getline(std::cin, str))
             src.feedEof();
 
-        if (str == ":{")
+        if (fresh && str == ":{")
         {
             while (true)
             {
@@ -114,16 +114,20 @@ int main(int argc, char* argv[])
         }
     };
 
+
     while (true)
     {
         try
         {
+            bool fresh = true;
+
             while (ll.getTokenQueueSize() == 0)
             {
                 auto rs = ll.lex(src);
                 if (rs == lex_result::exhausted)
                 {
-                    get_input();
+                    get_input(fresh);
+                    fresh = false;
                 }
                 else if (rs == lex_result::eof)
                 {
@@ -189,7 +193,7 @@ int main(int argc, char* argv[])
         catch (source_positional_error& ex)
         {
             auto pos = ex.getPosition();
-            std::cerr << ex.getSource().getName() << ":" << pos.line << ":" << pos.col << ": " << ex.what() << std::endl;
+            std::cerr << ex.getSource().getName() << ":" << (pos.line + 1) << ":" << (pos.col + 1) << ": " << ex.what() << std::endl;
 
             std::string tmp;
             getline(std::cin, tmp);

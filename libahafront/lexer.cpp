@@ -62,7 +62,7 @@ namespace aha::front
             U"::", U"->", U"=>", U"|>", U"&>", U"<&", U"?.");
 
         static const auto toks_keyword = ext::make_array<std::u32string_view>(
-            U"module", U"import", U"class", U"interface", U"enum", U"static", U"final"
+            U"module", U"import", U"class", U"interface", U"enum", U"static", U"final",
             U"public", U"private", U"protected", U"internal",
             U"func", U"in", U"let", U"var", U"this", U"event", U"curry", U"uncurry",
             U"byte", U"sbyte", U"short", U"ushort", U"int", U"uint", U"long", U"ulong",
@@ -135,8 +135,6 @@ namespace aha::front
                 }
             }
 
-            if (ch == U'\n')
-                skip = true;
             if (m_str_token.empty())
                 m_tok_beg = pos;
 
@@ -154,10 +152,16 @@ namespace aha::front
                     m_str_token.clear();
                     m_tok_beg = pos;
                     done = true;
+                    skip = true;
                 }
                 else if (!isSeperator(ch))
                 {
-                    if (!m_str_token.empty())
+                    if (m_str_token.empty())
+                    {
+                        m_indent_pos.clear();
+                        m_indent_str.clear();
+                    }
+                    else
                     {
                         if (m_str_token.size() == m_indent_str.size())
                         {
@@ -166,24 +170,27 @@ namespace aha::front
                         }
                         else if (m_str_token.size() < m_indent_str.size())
                         {
+                            auto it = m_indent_pos.end() - 1;
                             while (1)
                             {
-                                m_indent_pos.pop_back();
+                                if (m_str_token.size() > *it)
+                                    throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
 
-                                if (m_indent_pos.empty())
+                                if (m_str_token.size() == *it)
                                 {
-                                    // no indent
-
-                                    if (!m_str_token.empty())
+                                    if (m_indent_str.compare(0, *it, m_str_token) != 0)
                                         throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
 
                                     break;
                                 }
 
-                                if (m_indent_str.compare(0, m_indent_pos.back(), m_str_token) != 0)
-                                throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
+                                if (it == m_indent_pos.begin())
+                                    throwErrorWithRevert(lexer_error(src, m_tok_beg, "invalid indentation"));
+
+                                --it;
                             }
 
+                            m_indent_pos.erase(it + 1, m_indent_pos.end());
                             m_indent_str = std::move(m_str_token);
                         }
                         else
@@ -212,9 +219,23 @@ namespace aha::front
             {
                 if (m_str_token.empty())
                 {
-                    if (isSeperator(ch) || ch == '\n')
+                    if (isSeperator(ch))
                     {
                         skip = true;
+                    }
+                    else if (ch == '\n')
+                    {
+                        m_tok_queue.push_back(
+                            make_token(
+                                token_newline { },
+                                src, m_tok_beg, pos));
+
+                        m_str_token.clear();
+                        m_tok_beg = pos;
+                        done = true;
+                        skip = true;
+
+                        m_state = state::indent;
                     }
                     else
                     {
@@ -309,10 +330,13 @@ namespace aha::front
                         m_str_token.clear();
                         m_tok_beg = pos;
                         done = true;
+                        skip = true;
+
+                        m_state = state::indent;
                     }
                     else if (m_flags.comment_block)
                     {
-                        if (ch == U'*')
+                        if (ch == U'*' && m_str_token.size() >= 2)
                         {
                             m_flags.comment_block_might_closing = true;
                         }
@@ -321,8 +345,12 @@ namespace aha::front
                             m_flags.comment_block = false;
                             m_flags.commented_out = false;
 
+                            if (m_flags.comment_block_contains_newline)
+                                m_state = state::after_comment;
+
                             m_str_token.clear();
                             m_tok_beg = pos;
+                            skip = true;
                         }
                         else
                         {
@@ -432,9 +460,10 @@ namespace aha::front
                                     done = true;
                                 }
 
-                                if (done || m_idx_float_sep != -1 || m_idx_float_exp != -1 || m_idx_num_postfix != -1)
+                                if (done)
                                 {
-                                    if (m_str_token.size() == 2 && num_chars.find(m_str_token[1]) == std::u32string_view::npos)
+                                    std::u32string_view prefix = U"bBcCdDxX";
+                                    if (m_str_token.size() == 2 && m_str_token[0] == U'0' && prefix.find(m_str_token[1]) != std::u32string_view::npos)
                                     {
                                         throwErrorWithRevert(lexer_error(src, pos, "unexpected end of number literal"));
                                     }
@@ -447,7 +476,8 @@ namespace aha::front
                         }
                         else if (m_flags.punct)
                         {
-                            done = (punct_chars.find(ch) != std::u32string_view::npos);
+                            if (punct_chars.find(ch) == std::u32string_view::npos)
+                                done = true;
 
                             if (!m_str_token.empty())
                             {
@@ -457,9 +487,9 @@ namespace aha::front
                                 for (auto str : toks_punct)
                                 {
                                     int sz = std::min(m_str_token.size(), str.size());
-                                    if (m_str_token.compare(0, sz, str) == 0)
+                                    if (m_str_token.compare(0, sz, str, 0, sz) == 0)
                                     {
-                                        if (m_str_token.size() <= str.size())
+                                        if (m_str_token.size() >= str.size())
                                         {
                                             if (str.size() >= matched.size())
                                             {
@@ -489,11 +519,12 @@ namespace aha::front
 
                                     m_str_token.erase(m_str_token.begin(), m_str_token.begin() + matched.size());
                                     m_tok_beg = tok_end;
+                                    done = true;
                                 }
                             }
                         }
 
-                        if (done)
+                        if (done && !m_flags.punct)
                         {
                             // identifier & number
                             // punct token has made already
@@ -622,11 +653,6 @@ namespace aha::front
                             m_tok_beg = pos;
                         }
                     }
-
-                    if (m_flags.comment_block_contains_newline)
-                        m_state = state::after_comment;
-                    else if (ch == U'\n')
-                        m_state = state::indent;
                 }
             }
             else if (m_state == state::after_comment)
