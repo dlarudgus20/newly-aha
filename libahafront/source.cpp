@@ -40,7 +40,7 @@ namespace aha::front
     {
         if (m_error)
             throw std::logic_error("source has an error");
-        if (m_input_end)
+        if (m_input_end && m_input.empty())
             throw std::logic_error("repl_source was already fed EOF");
 
         m_input.insert(m_input.end(), line.begin(), line.end());
@@ -167,7 +167,7 @@ namespace aha::front
         if (m_error)
             return source_state::error;
 
-        if (!m_lines.empty())
+        if (!m_input.empty())
             return source_state::some;
 
         if (m_input_end)

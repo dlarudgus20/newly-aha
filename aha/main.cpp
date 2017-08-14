@@ -86,31 +86,35 @@ int main(int argc, char* argv[])
         std::cout << (fresh ? ">> " : "-- ");
 
         if (!getline(std::cin, str))
-            src.feedEof();
-
-        if (fresh && str == ":{")
         {
-            while (true)
-            {
-                std::cout << "-- ";
-                if (!getline(std::cin, str))
-                {
-                    src.feedEof();
-                    break;
-                }
-                else if (str == ":}")
-                {
-                    break;
-                }
-                else
-                {
-                    src.feedString(str + "\n");
-                }
-            }
+            src.feedEof();
         }
         else
         {
-            src.feedString(str + "\n");
+            if (fresh && str == ":{")
+            {
+                while (true)
+                {
+                    std::cout << "-- ";
+                    if (!getline(std::cin, str))
+                    {
+                        src.feedEof();
+                        break;
+                    }
+                    else if (str == ":}")
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        src.feedString(str + "\n");
+                    }
+                }
+            }
+            else
+            {
+                src.feedString(str + "\n");
+            }
         }
     };
 
