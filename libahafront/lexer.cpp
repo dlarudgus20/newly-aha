@@ -44,19 +44,24 @@ namespace
 
 namespace aha::front
 {
-    lexer::lexer() = default;
+    lexer::lexer()
+    {
+        m_flags.enable_interpol_block_end = false;
+        m_flags.interpol_block_end = false;
+    }
+
     lexer::~lexer() = default;
 
-    lex_result lexer::lex(source& src)
+    std::optional<token> lexer::lex(source& src)
     {
         if (m_state == state::error)
             throw std::logic_error("lexer has an error");
 
-        static const std::u32string_view punct_chars = U"!@$%^&*()-=+[]{};:,./<>?|";
+        static const std::u32string_view punct_chars = U"~!@$%^&*()-=+[];:,./<>?|";
 
         static const auto toks_punct = ext::make_array<std::u32string_view>(
-            U"!", U"@", U"$", U"%", U"^", U"&", U"*", U"(", U")", U"-", U"=", U"+",
-            U"[", U"]", U"{", U"}", U";", U":", U",", U".", U"/", U"<", U">", U"?",
+            U"~", U"!", U"@", U"$", U"%", U"^", U"&", U"*", U"(", U")", U"-", U"=", U"+",
+            U"[", U"]", U";", U":", U",", U".", U"/", U"<", U">", U"?",
             U"++", U"--", U">>", U"<<", U"==", U"!=", U"<=", U">=", U"&&", U"||",
             U"+=", U"-=", U"*=", U"/=", U"%=", U"&=", U"|=", U"^=", U"<<=", U">>=", U":=:",
             U"::", U"->", U"=>", U"|>", U"&>", U"<&", U"?.");
@@ -74,8 +79,9 @@ namespace aha::front
         static const std::u32string_view tok_comment_block_begin = U"/*";
         static const std::u32string_view tok_comment_block_end = U"*/";
 
-        auto prev_queue_size = m_tok_queue.size();
-        while (m_tok_queue.size() == prev_queue_size)
+        std::optional<token> ret;
+
+        while (!ret)
         {
             char32_t ch;
             source_position pos;
@@ -125,12 +131,14 @@ namespace aha::front
                         }
                         else
                         {
-                            return lex_result::eof;
+                            m_last_result = lex_result::eof;
+                            return { };
                         }
                     }
                     else
                     {
-                        return lex_result::exhausted;
+                        m_last_result = lex_result::exhausted;
+                        return { };
                     }
                 }
             }
@@ -144,10 +152,10 @@ namespace aha::front
                 {
                     // empty line
 
-                    m_tok_queue.push_back(
-                        make_token(
-                            token_newline { },
-                            src, m_tok_beg, pos));
+                    assert(!ret);
+                    ret = make_token(
+                        token_newline { },
+                        src, m_tok_beg, pos);
 
                     m_str_token.clear();
                     m_tok_beg = pos;
@@ -202,10 +210,10 @@ namespace aha::front
                             m_indent_str = std::move(m_str_token);
                         }
 
-                        m_tok_queue.push_back(
-                            make_token(
-                                token_indent { m_indent_pos.size() },
-                                src, m_tok_beg, pos));
+                        assert(!ret);
+                        ret = make_token(
+                            token_indent { m_indent_pos.size() },
+                            src, m_tok_beg, pos);
 
                         m_str_token.clear();
                         m_tok_beg = pos;
@@ -225,10 +233,10 @@ namespace aha::front
                     }
                     else if (ch == '\n')
                     {
-                        m_tok_queue.push_back(
-                            make_token(
-                                token_newline { },
-                                src, m_tok_beg, pos));
+                        assert(!ret);
+                        ret = make_token(
+                            token_newline { },
+                            src, m_tok_beg, pos);
 
                         m_str_token.clear();
                         m_tok_beg = pos;
@@ -250,12 +258,20 @@ namespace aha::front
                         m_flags.heximal = false;
                         m_flags.decimal = false;
                         m_flags.punct = false;
+                        m_flags.normal_string = false;
+                        m_flags.raw_string = false;
+                        m_flags.interpol_string = false;
                         m_flags.comment_line = false;
                         m_flags.comment_block = false;
                         m_flags.comment_block_contains_newline = false;
                         m_flags.comment_block_might_closing = false;
 
-                        if (isIdentifierFirstChar(ch))
+                        if (m_flags.interpol_block_end)
+                        {
+                            assert(ch == U'}');
+                            m_flags.interpol_string = true;
+                        }
+                        else if (isIdentifierFirstChar(ch))
                         {
                             m_flags.identifier = true;
                         }
@@ -274,12 +290,24 @@ namespace aha::front
                                 m_flags.comment_line = true;
                                 m_flags.comment_block = true;
                             }
+                            else if (ch == U'@')
+                            {
+                                m_flags.raw_string = true;
+                            }
 
                             m_flags.punct = true;
                         }
                         else if (ch == U'#')
                         {
                             m_flags.comment_line = true;
+                        }
+                        else if (ch == U'\'' || ch == U'\"')
+                        {
+                            m_flags.normal_string = true;
+                        }
+                        else if (ch == U'`')
+                        {
+                            m_flags.interpol_string = true;
                         }
                         else
                         {
@@ -322,10 +350,10 @@ namespace aha::front
                         m_flags.comment_line = false;
                         m_flags.commented_out = false;
 
-                        m_tok_queue.push_back(
-                            make_token(
-                                token_newline { },
-                                src, m_tok_beg, pos));
+                        assert(!ret);
+                        ret = make_token(
+                            token_newline { },
+                            src, m_tok_beg, pos);
 
                         m_str_token.clear();
                         m_tok_beg = pos;
@@ -365,10 +393,124 @@ namespace aha::front
 
                     if (!commented_out)
                     {
-                        if (m_flags.identifier)
+                        if (m_flags.raw_string && m_str_token.size() == 1)
+                        {
+                            if (ch != U'\'' && ch != U'\"')
+                                m_flags.raw_string = false;
+                        }
+
+                        if (m_flags.raw_string)
+                        {
+                            // TODO: bugs?
+                            if (m_str_token.size() >= 3 && m_str_token.back() == m_str_token[1] && ch != m_str_token[1])
+                            {
+                                assert(!ret);
+                                ret = make_token(
+                                    token_raw_string { m_str_token[1], m_str_token.substr(2, m_str_token.size() - 3) },
+                                    src, m_tok_beg, pos);
+
+                                m_str_token.clear();
+                                m_tok_beg = pos;
+                                done = true;
+                            }
+
+                        }
+                        else if (m_flags.normal_string)
+                        {
+                            // TODO: \t, \n 등 문자 체크해서 예외처리
+                            if (ch == m_str_token[0] && m_str_token.back() != U'\\')
+                            {
+                                assert(!ret);
+                                ret = make_token(
+                                    token_normal_string { m_str_token[0], m_str_token.substr(1) },
+                                    src, m_tok_beg, pos);
+
+                                m_str_token.clear();
+                                m_tok_beg = pos;
+                                done = true;
+                                skip = true;
+                            }
+                        }
+                        else if (m_flags.interpol_string)
+                        {
+                            // TODO: bugs
+                            if ((m_str_token.size() == 1 && m_str_token[0] == U'`') || (m_str_token.size() == 2 && m_str_token[0] == U'@'))
+                            {
+                                // nothing
+                            }
+                            else if (ch == U'`' && m_str_token.back() != U'\\')
+                            {
+                                assert(!ret);
+                                ret = make_token(
+                                    token_interpol_string_end { m_str_token.substr(1) },
+                                    src, m_tok_beg, pos);
+
+                                m_flags.enable_interpol_block_end = false;
+
+                                m_str_token.clear();
+                                m_tok_beg = pos;
+                                done = true;
+                                skip = true;
+                            }
+                            else if (m_str_token.back() == U'$' && ch == U'{')
+                            {
+                                auto str = m_str_token.substr(1, m_str_token.size() - 2);
+
+                                if (!m_flags.enable_interpol_block_end)
+                                {
+                                    assert(!ret);
+                                    ret = make_token(
+                                        token_interpol_string_start { std::move(str) },
+                                        src, m_tok_beg, pos);
+
+                                    m_flags.enable_interpol_block_end = true;
+                                }
+                                else
+                                {
+                                    assert(!ret);
+                                    ret = make_token(
+                                        token_interpol_string_mid { std::move(str) },
+                                        src, m_tok_beg, pos);
+                                }
+
+                                m_str_token.clear();
+                                m_tok_beg = pos;
+                                done = true;
+                                skip = true;
+                            }
+                        }
+                        else if (m_flags.identifier)
                         {
                             if (!isIdentifierChar(ch))
                             {
+                                assert(!ret);
+
+                                auto it1 = std::find(m_contextual_keywords.begin(), m_contextual_keywords.end(), m_str_token);
+                                if (it1 != m_contextual_keywords.end())
+                                {
+                                    ret = make_token(
+                                        token_contextual_keyword { m_str_token },
+                                        src, m_tok_beg, pos);
+                                }
+                                else
+                                {
+                                    auto it2 = std::find(toks_keyword.begin(), toks_keyword.end(), m_str_token);
+                                    if (it2 != toks_keyword.end())
+                                    {
+                                        ret = make_token(
+                                            token_keyword { m_str_token },
+                                            src, m_tok_beg, pos);
+                                    }
+                                    else
+                                    {
+                                        ret = make_token(
+                                            token_identifier { m_str_token },
+                                            src, m_tok_beg, pos);
+                                    }
+                                }
+
+                                m_str_token.clear();
+                                m_tok_beg = pos;
                                 done = true;
                             }
                         }
@@ -473,91 +615,8 @@ namespace aha::front
                             {
                                 done = true;
                             }
-                        }
-                        else if (m_flags.punct)
-                        {
-                            if (punct_chars.find(ch) == std::u32string_view::npos)
-                                done = true;
 
-                            if (!m_str_token.empty())
-                            {
-                                std::u32string_view matched;
-                                unsigned candidates = 0;
-
-                                for (auto str : toks_punct)
-                                {
-                                    int sz = std::min(m_str_token.size(), str.size());
-                                    if (m_str_token.compare(0, sz, str, 0, sz) == 0)
-                                    {
-                                        if (m_str_token.size() >= str.size())
-                                        {
-                                            if (str.size() >= matched.size())
-                                            {
-                                                matched = str;
-                                            }
-                                        }
-                                        else
-                                        {
-                                            ++candidates;
-                                        }
-                                    }
-                                }
-
-                                if (done || candidates == 0)
-                                {
-                                    if (matched.empty())
-                                        throwErrorWithRevert(lexer_error(src, m_tok_beg, "unexpected character"));
-
-                                    auto tok_end = m_tok_beg;
-                                    for (unsigned i = 0; i < matched.size(); ++i)
-                                        tok_end = tok_end.next(src);
-
-                                    m_tok_queue.push_back(
-                                        make_token(
-                                            token_punct { std::u32string { matched } },
-                                            src, m_tok_beg, tok_end));
-
-                                    m_str_token.erase(m_str_token.begin(), m_str_token.begin() + matched.size());
-                                    m_tok_beg = tok_end;
-                                    done = true;
-                                }
-                            }
-                        }
-
-                        if (done && !m_flags.punct)
-                        {
-                            // identifier & number
-                            // punct token has made already
-
-                            token tok;
-
-                            if (m_flags.identifier)
-                            {
-                                auto it1 = std::find(m_contextual_keywords.begin(), m_contextual_keywords.end(), m_str_token);
-                                if (it1 != m_contextual_keywords.end())
-                                {
-                                    tok = make_token(
-                                        token_contextual_keyword { m_str_token },
-                                        src, m_tok_beg, pos);
-                                }
-                                else
-                                {
-                                    auto it2 = std::find(toks_keyword.begin(), toks_keyword.end(), m_str_token);
-                                    if (it2 != toks_keyword.end())
-                                    {
-                                        tok = make_token(
-                                            token_keyword { m_str_token },
-                                            src, m_tok_beg, pos);
-                                    }
-                                    else
-                                    {
-                                        tok = make_token(
-                                            token_identifier { m_str_token },
-                                            src, m_tok_beg, pos);
-                                    }
-                                }
-                            }
-                            else // if number
+                            if (done)
                             {
                                 int beg1 = 0, end1 = m_str_token.size();
                                 int beg2 = end1, end2 = end1;
@@ -644,13 +703,70 @@ namespace aha::front
                                 tn.postfix = substr8(m_str_token, beg4, std::u32string_view::npos);
                                 tn.is_float = is_float;
 
-                                tok = make_token(std::move(tn), src, m_tok_beg, pos);
+                                assert(!ret);
+                                ret = make_token(std::move(tn), src, m_tok_beg, pos);
+
+                                m_str_token.clear();
+                                m_tok_beg = pos;
                             }
+                        }
+                        else if (m_flags.punct)
+                        {
+                            if (punct_chars.find(ch) == std::u32string_view::npos)
+                                done = true;
 
-                            m_tok_queue.push_back(tok);
+                            if (!m_str_token.empty())
+                            {
+                                std::u32string_view matched;
+                                unsigned candidates = 0;
 
-                            m_str_token.clear();
-                            m_tok_beg = pos;
+                                for (auto str : toks_punct)
+                                {
+                                    int sz = std::min(m_str_token.size(), str.size());
+                                    if (m_str_token.compare(0, sz, str, 0, sz) == 0)
+                                    {
+                                        if (m_str_token.size() >= str.size())
+                                        {
+                                            if (str.size() >= matched.size())
+                                            {
+                                                matched = str;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            ++candidates;
+                                        }
+                                    }
+                                }
+
+                                if (done || candidates == 0)
+                                {
+                                    if (matched.empty())
+                                        throwErrorWithRevert(lexer_error(src, m_tok_beg, "unexpected character"));
+
+                                    assert(!ret);
+
+                                    if (m_flags.enable_interpol_block_end)
+                                    {
+                                        m_flags.interpol_block_end = true;
+                                        done = false;
+                                    }
+                                    else
+                                    {
+                                        auto tok_end = m_tok_beg;
+                                        for (unsigned i = 0; i < matched.size(); ++i)
+                                            tok_end = tok_end.next(src);
+
+                                        ret = make_token(
+                                            token_punct { std::u32string { matched } },
+                                            src, m_tok_beg, tok_end);
+
+                                        m_str_token.erase(m_str_token.begin(), m_str_token.begin() + matched.size());
+                                        m_tok_beg = tok_end;
+                                        done = true;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -659,10 +775,10 @@ namespace aha::front
             {
                 if (ch == U'\n')
                 {
-                    m_tok_queue.push_back(
-                        make_token(
-                            token_newline { },
-                            src, m_tok_beg, pos));
+                    assert(!ret);
+                    ret = make_token(
+                        token_newline { },
+                        src, m_tok_beg, pos);
 
                     m_str_token.clear();
                     m_tok_beg = pos;
@@ -688,22 +804,18 @@ namespace aha::front
             }
         }
 
-        return lex_result::done;
-    }
-
-    std::size_t lexer::getTokenQueueSize() const
-    {
-        return m_tok_queue.size();
-    }
-
-    token lexer::popToken()
-    {
-        if (m_tok_queue.empty())
-            throw std::logic_error("token queue is empty");
-
-        token ret = std::move(m_tok_queue.front());
-        m_tok_queue.pop_front();
+        m_last_result = lex_result::done;
         return ret;
+    }
+
+    lex_result lexer::getLastResult() const
+    {
+        return m_last_result;
+    }
+
+    void lexer::enableInterpolatedBlockEnd(bool enable)
+    {
+        m_flags.enable_interpol_block_end = enable;
     }
 
     void lexer::setContextualKeyword(std::vector<std::u32string> keywords)

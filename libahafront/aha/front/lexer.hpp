@@ -26,6 +26,7 @@
 #include <string_view>
 #include <vector>
 #include <deque>
+#include <optional>
 #include <variant>
 #include <utility>
 
@@ -44,7 +45,7 @@ namespace aha::front
 
     enum class lex_result
     {
-        done, exhausted, eof
+        done, exhausted, eof, error
     };
 
     struct token_indent
@@ -70,6 +71,28 @@ namespace aha::front
     {
         std::u32string str;
     };
+    struct token_normal_string
+    {
+        char32_t delimiter;
+        std::u32string str;
+    };
+    struct token_raw_string
+    {
+        char32_t delimiter;
+        std::u32string str;
+    };
+    struct token_interpol_string_start
+    {
+        std::u32string str;
+    };
+    struct token_interpol_string_mid
+    {
+        std::u32string str;
+    };
+    struct token_interpol_string_end
+    {
+        std::u32string str;
+    };
     struct token_number
     {
         unsigned radix;
@@ -90,6 +113,11 @@ namespace aha::front
             token_keyword,
             token_contextual_keyword,
             token_identifier,
+            token_normal_string,
+            token_raw_string,
+            token_interpol_string_start,
+            token_interpol_string_mid,
+            token_interpol_string_end,
             token_number
             > data;
     };
@@ -100,10 +128,10 @@ namespace aha::front
         lexer();
         ~lexer();
 
-        lex_result lex(source& src);
+        std::optional<token> lex(source& src);
+        lex_result getLastResult() const;
 
-        std::size_t getTokenQueueSize() const;
-        token popToken();
+        void enableInterpolatedBlockEnd(bool enable);
 
         void setContextualKeyword(std::vector<std::u32string> keywords);
 
@@ -136,18 +164,24 @@ namespace aha::front
             bool heximal : 1;
             bool decimal : 1;
             bool punct : 1;
+            bool normal_string : 1;
+            bool raw_string : 1;
+            bool interpol_string : 1;
             bool comment_line : 1;
             bool comment_block : 1;
             bool comment_block_contains_newline : 1;
             bool comment_block_might_closing : 1;
             bool commented_out : 1;
+
+            bool enable_interpol_block_end : 1;
+            bool interpol_block_end : 1;
         } m_flags;
         
         int m_idx_float_sep;
         int m_idx_float_exp;
         int m_idx_num_postfix;
 
-        std::deque<token> m_tok_queue;
+        lex_result m_last_result;
 
         std::vector<std::u32string> m_contextual_keywords;
 
@@ -159,6 +193,7 @@ namespace aha::front
         void lexer::throwError(Exception&& ex)
         {
             m_state = state::error;
+            m_last_result = lex_result::error;
             throw std::forward<Exception>(ex);
         }
     };

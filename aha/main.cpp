@@ -124,61 +124,65 @@ int main(int argc, char* argv[])
         try
         {
             bool fresh = true;
+            
+            std::optional<token> tok;
 
-            while (ll.getTokenQueueSize() == 0)
+            while (true)
             {
-                auto rs = ll.lex(src);
+                tok = ll.lex(src);
+                if (tok)
+                    break;
+
+                auto rs = ll.getLastResult();
                 if (rs == lex_result::exhausted)
                 {
                     get_input(fresh);
                     fresh = false;
                 }
-                else if (rs == lex_result::eof)
+                else // eof
                 {
                     // clear all
                     throw std::logic_error("not implemented");
                 }
             }
 
-            auto tok = ll.popToken();
-
-            if (std::holds_alternative<token_indent>(tok.data))
+            if (std::holds_alternative<token_indent>(tok->data))
             {
-                auto t = std::get<token_indent>(tok.data);
+                auto t = std::get<token_indent>(tok->data);
                 std::cout << "indent { " << t.level << " }\n";
             }
-            else if (std::holds_alternative<token_newline>(tok.data))
+            else if (std::holds_alternative<token_newline>(tok->data))
             {
-                auto t = std::get<token_newline>(tok.data);
+                auto t = std::get<token_newline>(tok->data);
                 std::cout << "newline {}\n";
             }
-            else if (std::holds_alternative<token_punct>(tok.data))
+            else if (std::holds_alternative<token_punct>(tok->data))
             {
-                auto t = std::get<token_punct>(tok.data);
+                auto t = std::get<token_punct>(tok->data);
                 auto str = utf32narrow(t.str);
                 std::cout << "punct { '" << str << "' }\n";
             }
-            else if (std::holds_alternative<token_keyword>(tok.data))
+            else if (std::holds_alternative<token_keyword>(tok->data))
             {
-                auto t = std::get<token_keyword>(tok.data);
+                auto t = std::get<token_keyword>(tok->data);
                 auto str = utf32narrow(t.str);
                 std::cout << "keyword { '" << str << "' }\n";
             }
-            else if (std::holds_alternative<token_contextual_keyword>(tok.data))
+            else if (std::holds_alternative<token_contextual_keyword>(tok->data))
             {
-                auto t = std::get<token_contextual_keyword>(tok.data);
+                auto t = std::get<token_contextual_keyword>(tok->data);
                 auto str = utf32narrow(t.str);
                 std::cout << "contextual keyword { '" << str << "' }\n";
             }
-            else if (std::holds_alternative<token_identifier>(tok.data))
+            else if (std::holds_alternative<token_identifier>(tok->data))
             {
-                auto t = std::get<token_identifier>(tok.data);
+                auto t = std::get<token_identifier>(tok->data);
                 auto str = utf32narrow(t.str);
                 std::cout << "identifier { '" << str << "' }\n";
             }
-            else if (std::holds_alternative<token_number>(tok.data))
+            else if (std::holds_alternative<token_number>(tok->data))
             {
-                auto t = std::get<token_number>(tok.data);
+                auto t = std::get<token_number>(tok->data);
                 if (!t.is_float)
                 {
                     std::cout << "integer [radix:" << t.radix << "] { " << t.integer << t.postfix << " }\n";
@@ -192,6 +196,42 @@ int main(int argc, char* argv[])
                         std::cout << (t.radix == 10 ? "e" : "p") << t.exponent;
                     std::cout << t.postfix << " }\n";
                 }
+            }
+            else if (std::holds_alternative<token_normal_string>(tok->data))
+            {
+                auto t = std::get<token_normal_string>(tok->data);
+                auto str = utf32narrow(t.str);
+                auto deli = static_cast<char>(t.delimiter);
+                std::cout << "normal string { " << deli << str << deli << " }\n";
+            }
+            else if (std::holds_alternative<token_raw_string>(tok->data))
+            {
+                auto t = std::get<token_raw_string>(tok->data);
+                auto str = utf32narrow(t.str);
+                auto deli = static_cast<char>(t.delimiter);
+                std::cout << "raw string { " << deli << str << deli << " }\n";
+            }
+            else if (std::holds_alternative<token_interpol_string_start>(tok->data))
+            {
+                auto t = std::get<token_interpol_string_start>(tok->data);
+                auto str = utf32narrow(t.str);
+                std::cout << "interpolated string (start) { `" << str << "` }\n";
+            }
+            else if (std::holds_alternative<token_interpol_string_mid>(tok->data))
+            {
+                auto t = std::get<token_interpol_string_mid>(tok->data);
+                auto str = utf32narrow(t.str);
+                std::cout << "interpolated string (mid) { }" << str << "${ }\n";
+            }
+            else if (std::holds_alternative<token_interpol_string_end>(tok->data))
+            {
+                auto t = std::get<token_interpol_string_end>(tok->data);
+                auto str = utf32narrow(t.str);
+                std::cout << "interpolated string (mid) { }" << str << "` }\n";
+            }
+            else
+            {
+                throw std::logic_error("add handler ...");
             }
         }
         catch (source_positional_error& ex)
