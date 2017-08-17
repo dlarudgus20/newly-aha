@@ -174,7 +174,6 @@ namespace aha::front
             bool commented_out : 1;
 
             bool enable_interpol_block_end : 1;
-            bool interpol_block_end : 1;
         } m_flags;
         
         int m_idx_float_sep;

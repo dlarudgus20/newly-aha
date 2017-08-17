@@ -47,7 +47,6 @@ namespace aha::front
     lexer::lexer()
     {
         m_flags.enable_interpol_block_end = false;
-        m_flags.interpol_block_end = false;
     }
 
     lexer::~lexer() = default;
@@ -266,12 +265,7 @@ namespace aha::front
                         m_flags.comment_block_contains_newline = false;
                         m_flags.comment_block_might_closing = false;
 
-                        if (m_flags.interpol_block_end)
-                        {
-                            assert(ch == U'}');
-                            m_flags.interpol_string = true;
-                        }
-                        else if (isIdentifierFirstChar(ch))
+                        if (isIdentifierFirstChar(ch))
                         {
                             m_flags.identifier = true;
                         }
@@ -306,6 +300,10 @@ namespace aha::front
                             m_flags.normal_string = true;
                         }
                         else if (ch == U'`')
+                        {
+                            m_flags.interpol_string = true;
+                        }
+                        else if (m_flags.enable_interpol_block_end && ch == U'}')
                         {
                             m_flags.interpol_string = true;
                         }
@@ -401,24 +399,33 @@ namespace aha::front
 
                         if (m_flags.raw_string)
                         {
-                            // TODO: bugs?
                             if (m_str_token.size() >= 3 && m_str_token.back() == m_str_token[1] && ch != m_str_token[1])
                             {
-                                assert(!ret);
-                                ret = make_token(
-                                    token_raw_string { m_str_token[1], m_str_token.substr(2, m_str_token.size() - 3) },
-                                    src, m_tok_beg, pos);
+                                auto delimiter = m_str_token[1];
 
-                                m_str_token.clear();
-                                m_tok_beg = pos;
-                                done = true;
+                                // if not escaped
+                                if ((m_str_token.size() - m_str_token.find_last_not_of(delimiter)) % 2 == 0)
+                                {
+                                    assert(!ret);
+                                    ret = make_token(
+                                        token_raw_string { m_str_token[1], m_str_token.substr(2, m_str_token.size() - 3) },
+                                        src, m_tok_beg, pos);
+
+                                    m_str_token.clear();
+                                    m_tok_beg = pos;
+                                    done = true;
+                                }
                             }
 
                         }
                         else if (m_flags.normal_string)
                         {
-                            // TODO: \t, \n 등 문자 체크해서 예외처리
-                            if (ch == m_str_token[0] && m_str_token.back() != U'\\')
+                            if (ch != U' ' && (isSeperator(ch) || is_newline(ch)))
+                            {
+                                throwErrorWithRevert(lexer_error(src, pos,
+                                    "non-raw string literal cannot contain seperator or newline character except space"));
+                            }
+                            else if (ch == m_str_token[0] && m_str_token.back() != U'\\')
                             {
                                 assert(!ret);
                                 ret = make_token(
@@ -434,7 +441,12 @@ namespace aha::front
                         else if (m_flags.interpol_string)
                         {
                             // TODO: bugs
-                            if ((m_str_token.size() == 1 && m_str_token[0] == U'`') || (m_str_token.size() == 2 && m_str_token[0] == U'@'))
+                            if (ch != U' ' && (isSeperator(ch) || is_newline(ch)))
+                            {
+                                throwErrorWithRevert(lexer_error(src, pos,
+                                    "non-raw string literal cannot contain seperator or newline character except space"));
+                            }
+                            else if ((m_str_token.size() == 1 && m_str_token[0] == U'`') || (m_str_token.size() == 2 && m_str_token[0] == U'@'))
                             {
                                 // nothing
                             }
@@ -456,7 +468,7 @@ namespace aha::front
                             {
                                 auto str = m_str_token.substr(1, m_str_token.size() - 2);
 
-                                if (!m_flags.enable_interpol_block_end)
+                                if (m_str_token.front() == U'`')
                                 {
                                     assert(!ret);
                                     ret = make_token(
@@ -467,6 +479,8 @@ namespace aha::front
                                 }
                                 else
                                 {
+                                    assert(m_str_token.front() == U'}');
+
                                     assert(!ret);
                                     ret = make_token(
                                         token_interpol_string_mid { std::move(str) },
@@ -746,25 +760,17 @@ namespace aha::front
 
                                     assert(!ret);
 
-                                    if (m_flags.enable_interpol_block_end)
-                                    {
-                                        m_flags.interpol_block_end = true;
-                                        done = false;
-                                    }
-                                    else
-                                    {
-                                        auto tok_end = m_tok_beg;
-                                        for (unsigned i = 0; i < matched.size(); ++i)
-                                            tok_end = tok_end.next(src);
+                                    auto tok_end = m_tok_beg;
+                                    for (unsigned i = 0; i < matched.size(); ++i)
+                                        tok_end = tok_end.next(src);
 
-                                        ret = make_token(
-                                            token_punct { std::u32string { matched } },
-                                            src, m_tok_beg, tok_end);
+                                    ret = make_token(
+                                        token_punct { std::u32string { matched } },
+                                        src, m_tok_beg, tok_end);
 
-                                        m_str_token.erase(m_str_token.begin(), m_str_token.begin() + matched.size());
-                                        m_tok_beg = tok_end;
-                                        done = true;
-                                    }
+                                    m_str_token.erase(m_str_token.begin(), m_str_token.begin() + matched.size());
+                                    m_tok_beg = tok_end;
+                                    done = true;
                                 }
                             }
                         }

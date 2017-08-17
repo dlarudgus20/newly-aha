@@ -118,6 +118,7 @@ int main(int argc, char* argv[])
         }
     };
 
+    bool interpolated = false;
 
     while (true)
     {
@@ -215,7 +216,9 @@ int main(int argc, char* argv[])
             {
                 auto t = std::get<token_interpol_string_start>(tok->data);
                 auto str = utf32narrow(t.str);
-                std::cout << "interpolated string (start) { `" << str << "` }\n";
+                std::cout << "interpolated string (start) { `" << str << "{ }\n";
+
+                interpolated = true;
             }
             else if (std::holds_alternative<token_interpol_string_mid>(tok->data))
             {
@@ -227,7 +230,9 @@ int main(int argc, char* argv[])
             {
                 auto t = std::get<token_interpol_string_end>(tok->data);
                 auto str = utf32narrow(t.str);
-                std::cout << "interpolated string (mid) { }" << str << "` }\n";
+                std::cout << "interpolated string (end) { " << (interpolated ? '}' : '`') << str << "` }\n";
+
+                interpolated = false;
             }
             else
             {
