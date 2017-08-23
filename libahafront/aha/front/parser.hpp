@@ -28,9 +28,12 @@ namespace aha::front
 {
     class lexer;
 
-    class parser
+    class parser final
     {
     public:
+        parser(const parser&) = delete;
+        parser& operator =(const parser&) = delete;
+
         parser();
         ~parser();
 

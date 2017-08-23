@@ -120,6 +120,11 @@ int main(int argc, char* argv[])
 
     bool interpolated = false;
 
+    auto print_error = [](source_positional_error& ex) {
+        auto pos = ex.getPosition();
+        std::cerr << ex.getSource().getName() << ":" << (pos.line + 1) << ":" << (pos.col + 1) << ": " << ex.what() << std::endl;
+    };
+
     while (true)
     {
         try
@@ -142,8 +147,11 @@ int main(int argc, char* argv[])
                 }
                 else // eof
                 {
-                    // clear all
-                    throw std::logic_error("not implemented");
+                    ll.clearAll();
+                    src.clearAll();
+
+                    std::cin.clear();
+                    fresh = true;
                 }
             }
 
@@ -239,14 +247,15 @@ int main(int argc, char* argv[])
                 throw std::logic_error("add handler ...");
             }
         }
-        catch (source_positional_error& ex)
+        catch (lexer_error& ex)
         {
-            auto pos = ex.getPosition();
-            std::cerr << ex.getSource().getName() << ":" << (pos.line + 1) << ":" << (pos.col + 1) << ": " << ex.what() << std::endl;
-
-            std::string tmp;
-            getline(std::cin, tmp);
-            return -1;
+            print_error(ex);
+            ll.clearBuffer();
+        }
+        catch (invalid_byteseq& ex)
+        {
+            print_error(ex);
+            src.clearBuffer();
         }
     }
 

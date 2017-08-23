@@ -125,8 +125,14 @@ namespace aha::front
     class lexer final
     {
     public:
+        lexer(const lexer&) = delete;
+        lexer& operator =(const lexer&) = delete;
+
         lexer();
         ~lexer();
+
+        void clearBuffer();
+        void clearAll();
 
         std::optional<token> lex(source& src);
         lex_result getLastResult() const;
@@ -136,6 +142,8 @@ namespace aha::front
         void setContextualKeyword(std::vector<std::u32string> keywords);
 
     private:
+        void init();
+
         enum class state
         {
             indent,
@@ -150,7 +158,7 @@ namespace aha::front
         std::u32string m_str_token;
         source_position m_tok_beg;
 
-        state m_state = state::indent;
+        state m_state;
 
         std::u32string m_indent_str;
         std::vector<std::size_t> m_indent_pos;
@@ -173,6 +181,7 @@ namespace aha::front
             bool comment_block_might_closing : 1;
             bool commented_out : 1;
 
+            bool interpol_string_after : 1;
             bool enable_interpol_block_end : 1;
         } m_flags;
         
@@ -189,7 +198,7 @@ namespace aha::front
         static bool isIdentifierChar(char32_t ch);
 
         template <typename Exception>
-        void lexer::throwError(Exception&& ex)
+        void throwError(Exception&& ex)
         {
             m_state = state::error;
             m_last_result = lex_result::error;

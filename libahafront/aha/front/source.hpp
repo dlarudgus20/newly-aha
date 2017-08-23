@@ -81,9 +81,10 @@ namespace aha::front
     class source
     {
     public:
-        source() = default;
         source(const source&) = delete;
         source& operator =(const source&) = delete;
+
+        source() = default;
 
         virtual ~source();
 
@@ -103,6 +104,9 @@ namespace aha::front
         explicit repl_source(std::string name = "<stdin>");
         virtual ~repl_source();
 
+        void clearBuffer();
+        void clearAll();
+
         void feedString(std::string_view line);
         void feedEof();
 
@@ -116,15 +120,17 @@ namespace aha::front
         virtual source_position getEndpoint() const override;
 
     private:
+        void init();
+
         std::string m_name;
 
         std::deque<char32_t> m_chars;
-        std::vector<unsigned> m_lines { 0 };
-        bool m_prev_is_CR = false;
+        std::vector<unsigned> m_lines;
+        bool m_prev_is_CR;
 
         std::deque<char> m_input;
-        bool m_input_end = false;
-        bool m_error = false;
+        bool m_input_end;
+        bool m_error;
 
         bool popByte(unsigned char& ch);
     };

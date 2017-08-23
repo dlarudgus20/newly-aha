@@ -46,10 +46,32 @@ namespace aha::front
 {
     lexer::lexer()
     {
-        m_flags.enable_interpol_block_end = false;
+        init();
     }
 
     lexer::~lexer() = default;
+
+    void lexer::init()
+    {
+        m_flags.interpol_string_after = false;
+        m_flags.enable_interpol_block_end = false;
+
+        m_last_result = lex_result::exhausted;
+    }
+
+    void lexer::clearBuffer()
+    {
+        m_buf.clear();
+        m_str_token.clear();
+
+        m_state = state::indent;
+    }
+
+    void lexer::clearAll()
+    {
+        clearBuffer();
+        init();
+    }
 
     std::optional<token> lexer::lex(source& src)
     {
@@ -457,6 +479,7 @@ namespace aha::front
                                     token_interpol_string_end { m_str_token.substr(1) },
                                     src, m_tok_beg, pos);
 
+                                m_flags.interpol_string_after = false;
                                 m_flags.enable_interpol_block_end = false;
 
                                 m_str_token.clear();
@@ -475,6 +498,7 @@ namespace aha::front
                                         token_interpol_string_start { std::move(str) },
                                         src, m_tok_beg, pos);
 
+                                    m_flags.interpol_string_after = true;
                                     m_flags.enable_interpol_block_end = true;
                                 }
                                 else
@@ -821,6 +845,9 @@ namespace aha::front
 
     void lexer::enableInterpolatedBlockEnd(bool enable)
     {
+        if (!m_flags.interpol_string_after)
+            throw std::logic_error("dis/enabling interpolated block end can be done only during interpolated string");
+
         m_flags.enable_interpol_block_end = enable;
     }
 

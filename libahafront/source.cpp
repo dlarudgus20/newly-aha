@@ -32,9 +32,34 @@ namespace aha::front
     repl_source::repl_source(std::string name /* = "<repl>" */)
         : m_name(std::move(name))
     {
+        init();
     }
 
     repl_source::~repl_source() = default;
+
+    void repl_source::init()
+    {
+        m_chars.clear();
+        m_lines.assign({ 0 });
+
+        m_prev_is_CR = false;
+
+        m_input_end = false;
+        m_error = false;
+    }
+
+    void repl_source::clearBuffer()
+    {
+        m_input.clear();
+
+        m_error = false;
+    }
+
+    void repl_source::clearAll()
+    {
+        clearBuffer();
+        init();
+    }
 
     void repl_source::feedString(std::string_view line)
     {
